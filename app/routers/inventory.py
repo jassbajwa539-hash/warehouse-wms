@@ -1,5 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, Depends
 from sqlalchemy.orm import Session
+from fastapi.responses import JSONResponse
 import pandas as pd
 
 from app.database import SessionLocal
@@ -18,6 +19,10 @@ async def upload_inventory(
     db: Session = SessionLocal()
 
     try:
+
+        # If uploading Excel use read_excel instead
+        # df = pd.read_excel(file.file)
+
         df = pd.read_csv(file.file)
 
         imported = 0
@@ -27,9 +32,11 @@ async def upload_inventory(
 
             serial = str(row["Serial Code"]).strip()
 
-            existing = db.query(Inventory).filter(
-                Inventory.serial_no == serial
-            ).first()
+            existing = (
+                db.query(Inventory)
+                .filter(Inventory.serial_no == serial)
+                .first()
+            )
 
             if existing:
                 skipped += 1
@@ -53,6 +60,15 @@ async def upload_inventory(
             "Skipped": skipped,
             "UploadedBy": current_user["username"]
         }
+
+    except Exception as e:
+        db.rollback()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": str(e)
+            }
+        )
 
     finally:
         db.close()
