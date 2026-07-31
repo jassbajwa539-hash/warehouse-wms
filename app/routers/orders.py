@@ -1,4 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 import pandas as pd
 
@@ -19,10 +20,10 @@ async def upload_orders(
     db: Session = SessionLocal()
 
     try:
+
         df = pd.read_excel(file.file)
 
         imported = 0
-        skipped = 0
 
         for _, row in df.iterrows():
 
@@ -30,9 +31,11 @@ async def upload_orders(
             sku = str(row["SKU"]).strip()
             qty = int(row["Target"])
 
-            order = db.query(Order).filter(
-                Order.order_no == order_no
-            ).first()
+            order = (
+                db.query(Order)
+                .filter(Order.order_no == order_no)
+                .first()
+            )
 
             if not order:
                 order = Order(
@@ -41,37 +44,35 @@ async def upload_orders(
                 )
                 db.add(order)
 
-            # Prevent duplicate order lines
-            existing = (
-                db.query(OrderItem)
-                .filter(
-                    OrderItem.order_no == order_no,
-                    OrderItem.sku == sku
+            db.add(
+                OrderItem(
+                    order_no=order_no,
+                    sku=sku,
+                    required_qty=qty,
+                    picked_qty=0
                 )
-                .first()
             )
 
-            if existing:
-                skipped += 1
-                continue
-
-            item = OrderItem(
-                order_no=order_no,
-                sku=sku,
-                required_qty=qty,
-                picked_qty=0
-            )
-
-            db.add(item)
             imported += 1
 
         db.commit()
 
         return {
+            "success": True,
             "Imported": imported,
-            "Skipped": skipped,
-            "UploadedBy": current_user["username"]
+            "Uploaded By": current_user["username"]
         }
+
+    except Exception as e:
+
+        db.rollback()
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": str(e)
+            }
+        )
 
     finally:
         db.close()
