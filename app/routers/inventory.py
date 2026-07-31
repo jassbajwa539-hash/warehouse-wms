@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, Depends
-from sqlalchemy.orm import Session
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
 import pandas as pd
 
 from app.database import SessionLocal
@@ -20,10 +20,43 @@ async def upload_inventory(
 
     try:
 
-        # If uploading Excel use read_excel instead
-        # df = pd.read_excel(file.file)
-
+        # Read CSV
         df = pd.read_csv(file.file)
+
+        # Remove blank rows
+        df = df.fillna("")
+
+        # Detect location column
+        if "Location" in df.columns:
+            location_column = "Location"
+        elif "Sub Location" in df.columns:
+            location_column = "Sub Location"
+        else:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": "Location column not found. Expected 'Location' or 'Sub Location'."
+                }
+            )
+
+        required = ["SKU", "Serial Code", "Box"]
+
+        for col in required:
+            if col not in df.columns:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": f"Missing Column : {col}"
+                    }
+                )
+
+        # Load all existing serials once
+        existing_serials = {
+            x[0]
+            for x in db.query(Inventory.serial_no).all()
+        }
+
+        new_items = []
 
         imported = 0
         skipped = 0
@@ -32,40 +65,49 @@ async def upload_inventory(
 
             serial = str(row["Serial Code"]).strip()
 
-            existing = (
-                db.query(Inventory)
-                .filter(Inventory.serial_no == serial)
-                .first()
-            )
-
-            if existing:
+            if serial == "":
                 skipped += 1
                 continue
 
-            item = Inventory(
-                sku=str(row["SKU"]).strip(),
-                serial_no=serial,
-                location=str(row["Location"]).strip(),
-                box=str(row["Box"]).strip(),
-                status="AVAILABLE"
+            if serial in existing_serials:
+                skipped += 1
+                continue
+
+            existing_serials.add(serial)
+
+            new_items.append(
+                Inventory(
+                    sku=str(row["SKU"]).strip(),
+                    serial_no=serial,
+                    location=str(row[location_column]).strip(),
+                    box=str(row["Box"]).strip(),
+                    status="AVAILABLE"
+                )
             )
 
-            db.add(item)
             imported += 1
 
-        db.commit()
+        # Bulk Insert
+        if new_items:
+            db.bulk_save_objects(new_items)
+            db.commit()
 
         return {
+            "success": True,
             "Imported": imported,
             "Skipped": skipped,
-            "UploadedBy": current_user["username"]
+            "Total Rows": len(df),
+            "Uploaded By": current_user["username"]
         }
 
     except Exception as e:
+
         db.rollback()
+
         return JSONResponse(
             status_code=500,
             content={
+                "success": False,
                 "error": str(e)
             }
         )
