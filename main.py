@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
 
@@ -8,6 +9,7 @@ from app.models.orders import Order
 from app.models.order_items import OrderItem
 from app.models.pick_tasks import PickTask
 from app.models.pick_serials import PickSerial
+
 # Routers
 from app.routers.inventory import router as inventory_router
 from app.routers.orders import router as orders_router
@@ -20,12 +22,27 @@ from app.routers import users
 from app.routers import dashboard
 from app.routers import inventory_transactions
 
-# Create all database tables
+# Create database tables
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Warehouse RF System",
     version="1.0.0"
+)
+
+# -----------------------------
+# CORS
+# -----------------------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://warehouse-wms-tgaz.onrender.com"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Register Routers

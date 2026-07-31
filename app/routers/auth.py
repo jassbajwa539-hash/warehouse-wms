@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
@@ -8,6 +8,11 @@ from app.auth.security import verify_password
 from app.auth.jwt import create_access_token
 
 router = APIRouter(tags=["Authentication"])
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
 
 
 def get_db():
@@ -20,16 +25,23 @@ def get_db():
 
 @router.post("/login")
 def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
+    data: LoginRequest,
     db: Session = Depends(get_db),
 ):
-    user = db.query(User).filter(User.username == form_data.username).first()
+
+    user = db.query(User).filter(User.username == data.username).first()
 
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password"
+        )
 
-    if not verify_password(form_data.password, user.password):
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+    if not verify_password(data.password, user.password):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password"
+        )
 
     token = create_access_token(
         {
