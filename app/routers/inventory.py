@@ -10,6 +10,14 @@ from app.auth.roles import require_roles
 router = APIRouter()
 
 
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 @router.post("/inventory/upload")
 async def upload_inventory(
     file: UploadFile = File(...),
@@ -23,10 +31,10 @@ async def upload_inventory(
         # Read CSV
         df = pd.read_csv(file.file)
 
-        # Remove blank rows
+        # Replace blank values
         df = df.fillna("")
 
-        # Detect location column
+        # Detect Location column
         if "Location" in df.columns:
             location_column = "Location"
         elif "Sub Location" in df.columns:
@@ -35,22 +43,29 @@ async def upload_inventory(
             return JSONResponse(
                 status_code=400,
                 content={
+                    "success": False,
                     "error": "Location column not found. Expected 'Location' or 'Sub Location'."
                 }
             )
 
-        required = ["SKU", "Serial Code", "Box"]
+        required_columns = [
+            "SKU",
+            "Serial Code",
+            "Box"
+        ]
 
-        for col in required:
+        for col in required_columns:
+
             if col not in df.columns:
+
                 return JSONResponse(
                     status_code=400,
                     content={
+                        "success": False,
                         "error": f"Missing Column : {col}"
                     }
                 )
 
-        # Load all existing serials once
         existing_serials = {
             x[0]
             for x in db.query(Inventory.serial_no).all()
@@ -76,6 +91,7 @@ async def upload_inventory(
             existing_serials.add(serial)
 
             new_items.append(
+
                 Inventory(
                     sku=str(row["SKU"]).strip(),
                     serial_no=serial,
@@ -83,11 +99,11 @@ async def upload_inventory(
                     box=str(row["Box"]).strip(),
                     status="AVAILABLE"
                 )
+
             )
 
             imported += 1
 
-        # Bulk Insert
         if new_items:
             db.bulk_save_objects(new_items)
             db.commit()
@@ -113,4 +129,24 @@ async def upload_inventory(
         )
 
     finally:
+
         db.close()
+
+
+@router.get("/inventory")
+def get_inventory(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles("ADMIN", "PICKER"))
+):
+
+    inventory = (
+        db.query(Inventory)
+        .order_by(
+            Inventory.location,
+            Inventory.box,
+            Inventory.serial_no
+        )
+        .all()
+    )
+
+    return inventory
