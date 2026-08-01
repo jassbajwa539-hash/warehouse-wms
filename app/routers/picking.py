@@ -57,3 +57,16 @@ def get_tasks(
     )
 
     return tasks
+@router.get("/picking/task/{task_id}/serials")
+def get_task_serials(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_roles("ADMIN", "PICKER"))
+):
+    serials = (
+        db.query(PickSerial)
+        .filter(PickSerial.task_id == task_id)
+        .all()
+    )
+
+    return serials
