@@ -7,7 +7,10 @@ from app.models.users import User
 from app.auth.security import verify_password
 from app.auth.jwt import create_access_token
 
-router = APIRouter(tags=["Authentication"])
+router = APIRouter(
+    prefix="/auth",
+    tags=["Authentication"]
+)
 
 
 class LoginRequest(BaseModel):
@@ -26,10 +29,14 @@ def get_db():
 @router.post("/login")
 def login(
     data: LoginRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
 
-    user = db.query(User).filter(User.username == data.username).first()
+    user = (
+        db.query(User)
+        .filter(User.username == data.username)
+        .first()
+    )
 
     if not user:
         raise HTTPException(
@@ -47,7 +54,7 @@ def login(
         {
             "user_id": user.id,
             "username": user.username,
-            "role": user.role,
+            "role": user.role
         }
     )
 
@@ -58,6 +65,13 @@ def login(
             "id": user.id,
             "username": user.username,
             "full_name": user.full_name,
-            "role": user.role,
-        },
+            "role": user.role
+        }
+    }
+
+
+@router.get("/test")
+def test():
+    return {
+        "message": "Authentication API Working"
     }
